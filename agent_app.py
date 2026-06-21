@@ -1,22 +1,5 @@
 """
 AI Ticketing System — Agent Console (Streamlit)
-
-An internal support-agent console backed by three token-protected n8n
-webhook APIs:
-
-    QUEUE_URL   POST -> list open KAN tickets
-    DETAIL_URL  POST { ticketKey } -> reference block (Pinecone similar
-                tickets + this reporter's previous tickets)
-    ANSWER_URL  POST { ticketKey, reply } -> post Jira comment, close the
-                issue, email the customer
-
-All three require the header `X-API-Token` matching the shared secret you
-configured during n8n setup. Put that secret in Streamlit secrets as
-API_TOKEN (see README).
-
-Run locally:
-    pip install -r requirements.txt
-    streamlit run agent_app.py
 """
 
 import requests
@@ -55,6 +38,14 @@ if "detail" not in st.session_state:
     st.session_state.detail = None
 
 st.title("🛠️ Agent Console")
+
+# --- TEMPORARY DEBUG (remove once working) -------------------------------
+with st.expander("🔧 Debug: secrets diagnostics", expanded=True):
+    st.write("API_TOKEN present:", bool(API_TOKEN))
+    st.write("API_TOKEN length:", len(API_TOKEN))
+    st.write("Keys Streamlit can see in st.secrets:", list(st.secrets.keys()))
+    st.write("QUEUE_URL:", QUEUE_URL)
+# -------------------------------------------------------------------------
 
 if not API_TOKEN:
     st.warning(
@@ -134,7 +125,6 @@ with right:
                             f"Reply posted to {selected}, issue moved to Done, "
                             "and the customer was emailed."
                         )
-                        # Remove the answered ticket from the local queue.
                         st.session_state.tickets = [
                             t for t in st.session_state.tickets if t.get("key") != selected
                         ]
