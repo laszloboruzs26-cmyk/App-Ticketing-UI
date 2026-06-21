@@ -14,9 +14,11 @@ import requests
 import streamlit as st
 
 # --- Configuration -------------------------------------------------------
+# The Intake API does NOT require a token (it is the public customer form
+# backend). Override the default in .streamlit/secrets.toml if needed.
 INTAKE_URL = st.secrets.get(
     "INTAKE_URL",
-    "https://laszloboruzs222.app.n8n.cloud/webhook/ticket",
+    "https://laszloboruzs222.app.n8n.cloud/webhook/ticket-api",
 )
 
 st.set_page_config(page_title="Support — Submit a Ticket", page_icon="🎫")
@@ -58,7 +60,7 @@ if submitted:
             "subject": subject.strip(),
             "description": description.strip(),
             "orderNumber": order_number.strip(),
-            "reporter": reporter.strip(),
+            "reporterEmail": reporter.strip(),
             "priority": priority,
         }
         with st.spinner("Submitting your ticket..."):

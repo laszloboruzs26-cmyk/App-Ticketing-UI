@@ -12,7 +12,7 @@ webhook APIs:
 
 All three require the header `X-API-Token` matching the shared secret you
 configured during n8n setup. Put that secret in Streamlit secrets as
-API_TOKEN.
+API_TOKEN (see README).
 
 Run locally:
     pip install -r requirements.txt
@@ -134,6 +134,7 @@ with right:
                             f"Reply posted to {selected}, issue moved to Done, "
                             "and the customer was emailed."
                         )
+                        # Remove the answered ticket from the local queue.
                         st.session_state.tickets = [
                             t for t in st.session_state.tickets if t.get("key") != selected
                         ]
