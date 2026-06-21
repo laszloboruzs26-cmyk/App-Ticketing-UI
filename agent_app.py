@@ -1,5 +1,3 @@
-Your paste was cut off at the end (the reply-success block was incomplete), so I've reconstructed that tail sensibly. Here's the complete file with the ticket description panel added.
-
 """
 AI Ticketing System — Agent Console (Streamlit)
 """
@@ -7,7 +5,6 @@ AI Ticketing System — Agent Console (Streamlit)
 import requests
 import streamlit as st
 
-# --- Configuration -------------------------------------------------------
 BASE = "https://laszloboruzs222.app.n8n.cloud/webhook"
 QUEUE_URL = st.secrets.get("QUEUE_URL", f"{BASE}/agent-queue")
 DETAIL_URL = st.secrets.get("DETAIL_URL", f"{BASE}/agent-detail")
@@ -20,7 +17,6 @@ st.set_page_config(page_title="Agent Console", page_icon="🛠️", layout="wide
 
 
 def post(url, body=None):
-    """POST to an n8n endpoint with the shared token header."""
     resp = requests.post(url, json=body or {}, headers=HEADERS, timeout=180)
     if resp.status_code == 401:
         raise PermissionError("Unauthorized — check your API_TOKEN secret.")
@@ -31,7 +27,6 @@ def post(url, body=None):
         return {}
 
 
-# --- Session state -------------------------------------------------------
 if "tickets" not in st.session_state:
     st.session_state.tickets = []
 if "selected" not in st.session_state:
@@ -41,21 +36,12 @@ if "detail" not in st.session_state:
 
 st.title("🛠️ Agent Console")
 
-# --- TEMPORARY DEBUG (remove once working) -------------------------------
-with st.expander("🔧 Debug: secrets diagnostics", expanded=False):
-    st.write("API_TOKEN present:", bool(API_TOKEN))
-    st.write("API_TOKEN length:", len(API_TOKEN))
-    st.write("Keys Streamlit can see in st.secrets:", list(st.secrets.keys()))
-    st.write("QUEUE_URL:", QUEUE_URL)
-# -------------------------------------------------------------------------
-
 if not API_TOKEN:
     st.warning(
         "No API_TOKEN configured. Add it under App settings -> Secrets "
         "(it must match the token you set in the n8n workflows)."
     )
 
-# --- Queue ---------------------------------------------------------------
 col_refresh, _ = st.columns([1, 4])
 with col_refresh:
     if st.button("🔄 Load / refresh queue", use_container_width=True):
@@ -64,7 +50,7 @@ with col_refresh:
             st.session_state.tickets = data.get("tickets", [])
             st.session_state.selected = None
             st.session_state.detail = None
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             st.error(f"Could not load the queue: {exc}")
 
 tickets = st.session_state.tickets
@@ -75,7 +61,6 @@ if not tickets:
 
 left, right = st.columns([1, 2])
 
-# --- Ticket list ---------------------------------------------------------
 with left:
     st.subheader(f"Open tickets ({len(tickets)})")
     for t in tickets:
@@ -86,7 +71,6 @@ with left:
             st.session_state.detail = None
         st.caption(f"{t.get('status', '')} · {t.get('created', '')}")
 
-# --- Detail + reply ------------------------------------------------------
 with right:
     selected = st.session_state.selected
     if not selected:
@@ -99,17 +83,15 @@ with right:
         with st.spinner("Loading reference context..."):
             try:
                 st.session_state.detail = post(DETAIL_URL, {"ticketKey": selected})
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 st.error(f"Could not load ticket detail: {exc}")
                 st.stop()
 
     detail = st.session_state.detail or {}
 
-    # Summary line (e.g. "[high] law")
     if detail.get("summary"):
         st.markdown(f"**{detail['summary']}**")
 
-    # --- Ticket description (the message the customer submitted) ----------
     if detail.get("description"):
         with st.expander("📝 Ticket description", expanded=True):
             st.text(detail["description"])
@@ -136,7 +118,6 @@ with right:
                             f"Reply posted to {selected}, issue moved to Done, "
                             "and the customer was emailed."
                         )
-                        # Remove the answered ticket from the local queue
                         st.session_state.tickets = [
                             t for t in st.session_state.tickets
                             if t.get("key") != selected
@@ -149,5 +130,5 @@ with right:
                             f"The answer endpoint returned an error: "
                             f"{res.get('error', 'unknown error')}"
                         )
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     st.error(f"Could not send the reply: {exc}")
