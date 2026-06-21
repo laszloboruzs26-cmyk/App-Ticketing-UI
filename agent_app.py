@@ -1,3 +1,5 @@
+Your paste was cut off at the end (the reply-success block was incomplete), so I've reconstructed that tail sensibly. Here's the complete file with the ticket description panel added.
+
 """
 AI Ticketing System — Agent Console (Streamlit)
 """
@@ -40,7 +42,7 @@ if "detail" not in st.session_state:
 st.title("🛠️ Agent Console")
 
 # --- TEMPORARY DEBUG (remove once working) -------------------------------
-with st.expander("🔧 Debug: secrets diagnostics", expanded=True):
+with st.expander("🔧 Debug: secrets diagnostics", expanded=False):
     st.write("API_TOKEN present:", bool(API_TOKEN))
     st.write("API_TOKEN length:", len(API_TOKEN))
     st.write("Keys Streamlit can see in st.secrets:", list(st.secrets.keys()))
@@ -102,8 +104,17 @@ with right:
                 st.stop()
 
     detail = st.session_state.detail or {}
+
+    # Summary line (e.g. "[high] law")
     if detail.get("summary"):
         st.markdown(f"**{detail['summary']}**")
+
+    # --- Ticket description (the message the customer submitted) ----------
+    if detail.get("description"):
+        with st.expander("📝 Ticket description", expanded=True):
+            st.text(detail["description"])
+    else:
+        st.caption("No ticket description available.")
 
     with st.expander("📚 Similar past tickets (reference)", expanded=True):
         st.text(detail.get("historical_context", "—"))
@@ -125,12 +136,18 @@ with right:
                             f"Reply posted to {selected}, issue moved to Done, "
                             "and the customer was emailed."
                         )
+                        # Remove the answered ticket from the local queue
                         st.session_state.tickets = [
-                            t for t in st.session_state.tickets if t.get("key") != selected
+                            t for t in st.session_state.tickets
+                            if t.get("key") != selected
                         ]
                         st.session_state.selected = None
                         st.session_state.detail = None
+                        st.rerun()
                     else:
-                        st.error(f"Server returned: {res}")
+                        st.error(
+                            f"The answer endpoint returned an error: "
+                            f"{res.get('error', 'unknown error')}"
+                        )
                 except Exception as exc:  # noqa: BLE001
                     st.error(f"Could not send the reply: {exc}")
