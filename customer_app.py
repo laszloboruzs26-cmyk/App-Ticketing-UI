@@ -1,96 +1,66 @@
 """
 AI Ticketing System — Customer Intake (Streamlit)
-
-A simple customer-facing form that submits a support ticket to the n8n
-Intake API webhook. The n8n workflow generates the ticket ID, creates a
-Jira issue, runs the AI triage/RAG pipeline, and emails the customer.
-
-Run locally:
-    pip install -r requirements.txt
-    streamlit run customer_app.py
 """
 
 import requests
 import streamlit as st
 
-# --- Configuration -------------------------------------------------------
-# The Intake API does NOT require a token (it is the public customer form
-# backend). Override the default in .streamlit/secrets.toml if needed.
-INTAKE_URL = st.secrets.get(
-    "INTAKE_URL",
-    "https://laszloboruzs222.app.n8n.cloud/webhook/ticket-api",
-)
+BASE = "https://laszloboruzs222.app.n8n.cloud/webhook"
+INTAKE_URL = st.secrets.get("INTAKE_URL", f"{BASE}/ticket-api")
+API_TOKEN = st.secrets.get("API_TOKEN", "")
 
-st.set_page_config(page_title="Support — Submit a Ticket", page_icon="🎫")
+HEADERS = {"X-API-Token": API_TOKEN}
 
-st.title("Submit a Support Ticket")
+st.set_page_config(page_title="Submit a Ticket", page_icon="🎫", layout="centered")
+
+
+def post(url, body):
+    resp = requests.post(url, json=body, headers=HEADERS, timeout=180)
+    if resp.status_code == 401:
+        raise PermissionError("Unauthorized — check your API_TOKEN secret.")
+    resp.raise_for_status()
+    try:
+        return resp.json()
+    except ValueError:
+        return {}
+
+
+st.title("🎫 Submit a Support Ticket")
 st.caption(
     "Tell us what's going on and we'll get back to you by email. "
     "A ticket reference is generated automatically."
 )
 
-with st.form("intake", clear_on_submit=False):
-    subject = st.text_input("Subject *", placeholder="Short summary of the issue")
-    description = st.text_area(
-        "Description *",
-        placeholder="Describe the problem in as much detail as you can.",
-        height=180,
+if not API_TOKEN:
+    st.warning(
+        "No API_TOKEN configured. Add it under App settings -> Secrets "
+        "(it must match the token set in the n8n workflows)."
     )
-    order_number = st.text_input("Order number *", placeholder="e.g. ORD-12345")
-    reporter = st.text_input("Your email *", placeholder="you@example.com")
-    priority = st.selectbox("Priority", ["Low", "Medium", "High"], index=1)
 
+with st.form("ticket_form", clear_on_submit=True):
+    subject = st.text_input("Subject *")
+    description = st.text_area("Description *", height=200)
+    order_number = st.text_input("Order number *", placeholder="e.g. ORD-12345")
+    email = st.text_input("Your email *")
     submitted = st.form_submit_button("Submit ticket")
 
 if submitted:
-    missing = []
-    if not subject.strip():
-        missing.append("Subject")
-    if not description.strip():
-        missing.append("Description")
-    if not order_number.strip():
-        missing.append("Order number")
-    if not reporter.strip():
-        missing.append("Your email")
-
-    if missing:
-        st.error("Please fill in: " + ", ".join(missing))
+    if not (subject.strip() and description.strip() and order_number.strip() and email.strip()):
+        st.error("Please fill in all fields.")
     else:
         payload = {
             "subject": subject.strip(),
             "description": description.strip(),
             "orderNumber": order_number.strip(),
-            "reporterEmail": reporter.strip(),
-            "priority": priority,
+            "reporterEmail": email.strip(),
         }
         with st.spinner("Submitting your ticket..."):
             try:
-                resp = requests.post(INTAKE_URL, json=payload, timeout=120)
-                resp.raise_for_status()
-                try:
-                    data = resp.json()
-                except ValueError:
-                    data = {}
-
-                ticket_id = (
-                    data.get("ticketId")
-                    or data.get("ticketKey")
-                    or data.get("key")
-                    or ""
-                )
-                st.success("Your ticket has been submitted.")
-                if ticket_id:
-                    st.info(f"Your ticket reference is **{ticket_id}**.")
-                st.write(
-                    "We've emailed a confirmation to "
-                    f"**{reporter.strip()}**. Our team will follow up there."
-                )
-                if data:
-                    with st.expander("Response details"):
-                        st.json(data)
-            except requests.exceptions.RequestException as exc:
-                st.error(
-                    "Sorry — we couldn't submit your ticket right now. "
-                    "Please try again in a moment."
-                )
-                st.caption(f"Technical detail: {exc}")
+                res = post(INTAKE_URL, payload)
+                ref = res.get("ticketId", "")
+                if ref:
+                    st.success(f"Your ticket has been submitted. Reference: {ref}")
+                else:
+                    st.success("Your ticket has been submitted.")
+            except Exception as exc:
+                st.error(f"Could not submit your ticket: {exc}")

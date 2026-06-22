@@ -39,7 +39,7 @@ st.title("🛠️ Agent Console")
 if not API_TOKEN:
     st.warning(
         "No API_TOKEN configured. Add it under App settings -> Secrets "
-        "(it must match the token you set in the n8n workflows)."
+        "(it must match the token set in the n8n workflows)."
     )
 
 col_refresh, _ = st.columns([1, 4])
