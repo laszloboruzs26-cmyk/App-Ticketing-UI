@@ -27,7 +27,7 @@ st.markdown(
       .block-container { padding-top: 2rem; }
       .ticket-head {
         display: grid;
-        grid-template-columns: 2.4fr 3fr 1.1fr 1fr;
+        grid-template-columns: 2.6fr 3fr 1.1fr 1fr;
         gap: 12px;
         padding: 8px 14px;
         font-size: 0.72rem;
@@ -36,22 +36,14 @@ st.markdown(
         color: #8a93a3;
         border-bottom: 1px solid #e6e9ef;
       }
-      .ticket-row {
-        display: grid;
-        grid-template-columns: 2.4fr 3fr 1.1fr 1fr;
-        gap: 12px;
-        align-items: center;
-        padding: 12px 14px;
-        border-bottom: 1px solid #eef1f5;
-      }
-      .ticket-row:hover { background: #f7f9fc; }
       .req-cell { display: flex; align-items: center; gap: 10px; }
       .avatar {
         width: 34px; height: 34px; border-radius: 50%;
         display: flex; align-items: center; justify-content: center;
         color: #fff; font-weight: 600; font-size: 0.8rem; flex: 0 0 34px;
       }
-      .req-name { font-weight: 600; font-size: 0.9rem; line-height: 1.1; }
+      .req-name { font-weight: 600; font-size: 0.88rem; line-height: 1.15;
+        word-break: break-all; }
       .req-key { font-size: 0.74rem; color: #8a93a3; }
       .subject { font-size: 0.92rem; color: #1f2733; }
       .badge {
@@ -63,7 +55,6 @@ st.markdown(
       .b-prog   { background: #fff4e5; color: #d97706; }
       .prio-high { color: #e0352b; font-weight: 700; }
       .prio-med  { color: #8a93a3; }
-      .when { font-size: 0.82rem; color: #8a93a3; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -85,11 +76,26 @@ _PALETTE = ["#6366f1", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444",
             "#8b5cf6", "#ec4899", "#14b8a6", "#f97316", "#3b82f6"]
 
 
-def avatar_html(name):
-    name = (name or "?").strip() or "?"
-    parts = name.split()
-    initials = (parts[0][0] + (parts[1][0] if len(parts) > 1 else "")).upper()
-    color = _PALETTE[int(hashlib.md5(name.encode()).hexdigest(), 16) % len(_PALETTE)]
+def requester_label(ticket):
+    """Always prefer the reporter email; never show 'Unknown' if we have one."""
+    return (
+        ticket.get("reporter")
+        or ticket.get("reporterEmail")
+        or ticket.get("email")
+        or "No email on ticket"
+    )
+
+
+def avatar_html(label):
+    label = (label or "?").strip() or "?"
+    # initials from an email/name
+    base = label.split("@")[0] if "@" in label else label
+    parts = [p for p in base.replace(".", " ").replace("_", " ").split() if p]
+    if parts:
+        initials = (parts[0][0] + (parts[1][0] if len(parts) > 1 else "")).upper()
+    else:
+        initials = label[0].upper()
+    color = _PALETTE[int(hashlib.md5(label.encode()).hexdigest(), 16) % len(_PALETTE)]
     return f'<div class="avatar" style="background:{color}">{initials}</div>'
 
 
@@ -99,7 +105,7 @@ def status_badge(status):
         return f'<span class="badge b-done">{status or "Done"}</span>'
     if "progress" in s or "pending" in s:
         return f'<span class="badge b-prog">{status}</span>'
-    return f'<span class="badge b-open">{status or "Open"}</span>'
+    return f'<span class="badge b-open">{status or "To Do"}</span>'
 
 
 def prio_marker(priority):
@@ -149,7 +155,6 @@ if not API_TOKEN:
         "(it must match the token set in the n8n workflows)."
     )
 
-# Auto-load on first visit
 if not st.session_state.loaded:
     try:
         load_queue()
@@ -159,7 +164,7 @@ if not st.session_state.loaded:
 tickets = st.session_state.tickets
 
 # ----------------------------------------------------------------------------
-# Detail view (when a ticket is selected)
+# Detail view
 # ----------------------------------------------------------------------------
 if st.session_state.selected:
     selected = st.session_state.selected
@@ -182,14 +187,14 @@ if st.session_state.selected:
     head_bits = []
     if detail.get("priority") == "high":
         head_bits.append('<span class="prio-high">🔴 HIGH PRIORITY</span>')
-    head_bits.append(status_badge(detail.get("status", "Open")))
+    head_bits.append(status_badge(detail.get("status", "To Do")))
     st.markdown(" &nbsp; ".join(head_bits), unsafe_allow_html=True)
 
     if detail.get("summary"):
         st.markdown(f"**{detail['summary']}**")
 
-    if detail.get("reporter"):
-        st.caption(f"Requester: {detail['reporter']}")
+    requester = requester_label(detail)
+    st.caption(f"Requester: {requester}")
 
     if detail.get("description"):
         with st.expander("📝 Ticket description", expanded=True):
@@ -241,7 +246,6 @@ if not tickets:
     st.info("No high-priority tickets in the queue right now. Click **Refresh** to check again.")
     st.stop()
 
-# Column header
 st.markdown(
     '<div class="ticket-head">'
     '<div>Requester</div><div>Subject</div><div>Status</div><div>Priority</div>'
@@ -251,16 +255,16 @@ st.markdown(
 
 for t in tickets:
     key = t.get("key", "")
-    reporter = t.get("reporter") or t.get("reporterEmail") or "Unknown"
+    requester = requester_label(t)
     summary = t.get("summary", "(no subject)")
-    status = t.get("status", "Open")
+    status = t.get("status", "To Do")
     priority = t.get("priority", "")
 
-    row = st.columns([2.4, 3, 1.1, 1, 0.8])
+    row = st.columns([2.6, 3, 1.1, 1, 0.8])
     with row[0]:
         st.markdown(
-            f'<div class="req-cell">{avatar_html(reporter)}'
-            f'<div><div class="req-name">{reporter}</div>'
+            f'<div class="req-cell">{avatar_html(requester)}'
+            f'<div><div class="req-name">{requester}</div>'
             f'<div class="req-key">{key}</div></div></div>',
             unsafe_allow_html=True,
         )
