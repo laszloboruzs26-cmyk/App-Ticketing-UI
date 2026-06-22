@@ -35,6 +35,7 @@ if "detail" not in st.session_state:
     st.session_state.detail = None
 
 st.title("🛠️ Agent Console")
+st.caption("Only HIGH priority tickets that need a human agent appear here.")
 
 if not API_TOKEN:
     st.warning(
@@ -56,20 +57,21 @@ with col_refresh:
 tickets = st.session_state.tickets
 
 if not tickets:
-    st.info("No open tickets loaded. Click **Load / refresh queue** above.")
+    st.info("No high-priority tickets loaded. Click **Load / refresh queue** above.")
     st.stop()
 
 left, right = st.columns([1, 2])
 
 with left:
-    st.subheader(f"Open tickets ({len(tickets)})")
+    st.subheader(f"High-priority tickets ({len(tickets)})")
     for t in tickets:
         key = t.get("key", "")
         label = f"{key} — {t.get('summary', '')}"
         if st.button(label, key=f"sel_{key}", use_container_width=True):
             st.session_state.selected = key
             st.session_state.detail = None
-        st.caption(f"{t.get('status', '')} · {t.get('created', '')}")
+        prio = " · 🔴 HIGH" if t.get("priority") == "high" else ""
+        st.caption(f"{t.get('status', '')} · {t.get('created', '')}{prio}")
 
 with right:
     selected = st.session_state.selected
@@ -88,6 +90,9 @@ with right:
                 st.stop()
 
     detail = st.session_state.detail or {}
+
+    if detail.get("priority") == "high":
+        st.markdown("🔴 **HIGH PRIORITY**")
 
     if detail.get("summary"):
         st.markdown(f"**{detail['summary']}**")
