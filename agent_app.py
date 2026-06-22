@@ -1,6 +1,9 @@
 """
 AI Ticketing System — Agent Console (Streamlit)
+HelpDesk-style ticket list UI.
 """
+
+import hashlib
 
 import requests
 import streamlit as st
@@ -13,7 +16,58 @@ API_TOKEN = st.secrets.get("API_TOKEN", "")
 
 HEADERS = {"X-API-Token": API_TOKEN}
 
-st.set_page_config(page_title="Agent Console", page_icon="🛠️", layout="wide")
+st.set_page_config(page_title="Agent Console", page_icon="🎫", layout="wide")
+
+# ----------------------------------------------------------------------------
+# Styling
+# ----------------------------------------------------------------------------
+st.markdown(
+    """
+    <style>
+      .block-container { padding-top: 2rem; }
+      .ticket-head {
+        display: grid;
+        grid-template-columns: 2.4fr 3fr 1.1fr 1fr;
+        gap: 12px;
+        padding: 8px 14px;
+        font-size: 0.72rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #8a93a3;
+        border-bottom: 1px solid #e6e9ef;
+      }
+      .ticket-row {
+        display: grid;
+        grid-template-columns: 2.4fr 3fr 1.1fr 1fr;
+        gap: 12px;
+        align-items: center;
+        padding: 12px 14px;
+        border-bottom: 1px solid #eef1f5;
+      }
+      .ticket-row:hover { background: #f7f9fc; }
+      .req-cell { display: flex; align-items: center; gap: 10px; }
+      .avatar {
+        width: 34px; height: 34px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        color: #fff; font-weight: 600; font-size: 0.8rem; flex: 0 0 34px;
+      }
+      .req-name { font-weight: 600; font-size: 0.9rem; line-height: 1.1; }
+      .req-key { font-size: 0.74rem; color: #8a93a3; }
+      .subject { font-size: 0.92rem; color: #1f2733; }
+      .badge {
+        display: inline-block; padding: 3px 10px; border-radius: 12px;
+        font-size: 0.72rem; font-weight: 600;
+      }
+      .b-open   { background: #e7f0ff; color: #2563eb; }
+      .b-done   { background: #e7f7ed; color: #1a9d54; }
+      .b-prog   { background: #fff4e5; color: #d97706; }
+      .prio-high { color: #e0352b; font-weight: 700; }
+      .prio-med  { color: #8a93a3; }
+      .when { font-size: 0.82rem; color: #8a93a3; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 def post(url, body=None):
@@ -27,59 +81,92 @@ def post(url, body=None):
         return {}
 
 
+_PALETTE = ["#6366f1", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444",
+            "#8b5cf6", "#ec4899", "#14b8a6", "#f97316", "#3b82f6"]
+
+
+def avatar_html(name):
+    name = (name or "?").strip() or "?"
+    parts = name.split()
+    initials = (parts[0][0] + (parts[1][0] if len(parts) > 1 else "")).upper()
+    color = _PALETTE[int(hashlib.md5(name.encode()).hexdigest(), 16) % len(_PALETTE)]
+    return f'<div class="avatar" style="background:{color}">{initials}</div>'
+
+
+def status_badge(status):
+    s = (status or "").lower()
+    if "done" in s or "solved" in s or "closed" in s:
+        return f'<span class="badge b-done">{status or "Done"}</span>'
+    if "progress" in s or "pending" in s:
+        return f'<span class="badge b-prog">{status}</span>'
+    return f'<span class="badge b-open">{status or "Open"}</span>'
+
+
+def prio_marker(priority):
+    if (priority or "").lower() == "high":
+        return '<span class="prio-high">↑ HIGH</span>'
+    return '<span class="prio-med">•</span>'
+
+
+# ----------------------------------------------------------------------------
+# State
+# ----------------------------------------------------------------------------
 if "tickets" not in st.session_state:
     st.session_state.tickets = []
 if "selected" not in st.session_state:
     st.session_state.selected = None
 if "detail" not in st.session_state:
     st.session_state.detail = None
+if "loaded" not in st.session_state:
+    st.session_state.loaded = False
 
-st.title("🛠️ Agent Console")
-st.caption("Only HIGH priority tickets that need a human agent appear here.")
 
-if not API_TOKEN:
-    st.warning(
-        "No API_TOKEN configured. Add it under App settings -> Secrets "
-        "(it must match the token set in the n8n workflows)."
-    )
+def load_queue():
+    data = post(QUEUE_URL)
+    st.session_state.tickets = data.get("tickets", [])
+    st.session_state.selected = None
+    st.session_state.detail = None
+    st.session_state.loaded = True
 
-col_refresh, _ = st.columns([1, 4])
-with col_refresh:
-    if st.button("🔄 Load / refresh queue", use_container_width=True):
+
+# ----------------------------------------------------------------------------
+# Header
+# ----------------------------------------------------------------------------
+top_l, top_r = st.columns([3, 1])
+with top_l:
+    st.title("🎫 Agent Console")
+with top_r:
+    st.write("")
+    if st.button("🔄 Refresh", use_container_width=True):
         try:
-            data = post(QUEUE_URL)
-            st.session_state.tickets = data.get("tickets", [])
-            st.session_state.selected = None
-            st.session_state.detail = None
+            load_queue()
         except Exception as exc:
             st.error(f"Could not load the queue: {exc}")
 
+if not API_TOKEN:
+    st.warning(
+        "No API_TOKEN configured. Add it under App settings → Secrets "
+        "(it must match the token set in the n8n workflows)."
+    )
+
+# Auto-load on first visit
+if not st.session_state.loaded:
+    try:
+        load_queue()
+    except Exception as exc:
+        st.error(f"Could not load the queue: {exc}")
+
 tickets = st.session_state.tickets
 
-if not tickets:
-    st.info("No high-priority tickets loaded. Click **Load / refresh queue** above.")
-    st.stop()
-
-left, right = st.columns([1, 2])
-
-with left:
-    st.subheader(f"High-priority tickets ({len(tickets)})")
-    for t in tickets:
-        key = t.get("key", "")
-        label = f"{key} — {t.get('summary', '')}"
-        if st.button(label, key=f"sel_{key}", use_container_width=True):
-            st.session_state.selected = key
-            st.session_state.detail = None
-        prio = " · 🔴 HIGH" if t.get("priority") == "high" else ""
-        st.caption(f"{t.get('status', '')} · {t.get('created', '')}{prio}")
-
-with right:
+# ----------------------------------------------------------------------------
+# Detail view (when a ticket is selected)
+# ----------------------------------------------------------------------------
+if st.session_state.selected:
     selected = st.session_state.selected
-    if not selected:
-        st.info("Select a ticket on the left to view reference context and reply.")
-        st.stop()
-
-    st.subheader(f"Ticket {selected}")
+    if st.button("← Back to all tickets"):
+        st.session_state.selected = None
+        st.session_state.detail = None
+        st.rerun()
 
     if st.session_state.detail is None:
         with st.spinner("Loading reference context..."):
@@ -91,17 +178,22 @@ with right:
 
     detail = st.session_state.detail or {}
 
+    st.markdown(f"### {selected}")
+    head_bits = []
     if detail.get("priority") == "high":
-        st.markdown("🔴 **HIGH PRIORITY**")
+        head_bits.append('<span class="prio-high">🔴 HIGH PRIORITY</span>')
+    head_bits.append(status_badge(detail.get("status", "Open")))
+    st.markdown(" &nbsp; ".join(head_bits), unsafe_allow_html=True)
 
     if detail.get("summary"):
         st.markdown(f"**{detail['summary']}**")
 
+    if detail.get("reporter"):
+        st.caption(f"Requester: {detail['reporter']}")
+
     if detail.get("description"):
         with st.expander("📝 Ticket description", expanded=True):
             st.text(detail["description"])
-    else:
-        st.caption("No ticket description available.")
 
     with st.expander("📚 Similar past tickets (reference)", expanded=True):
         st.text(detail.get("historical_context", "—"))
@@ -137,3 +229,49 @@ with right:
                         )
                 except Exception as exc:
                     st.error(f"Could not send the reply: {exc}")
+    st.stop()
+
+# ----------------------------------------------------------------------------
+# List view
+# ----------------------------------------------------------------------------
+st.caption("High-priority tickets that need a human agent.")
+st.markdown(f"**{len(tickets)} tickets**")
+
+if not tickets:
+    st.info("No high-priority tickets in the queue right now. Click **Refresh** to check again.")
+    st.stop()
+
+# Column header
+st.markdown(
+    '<div class="ticket-head">'
+    '<div>Requester</div><div>Subject</div><div>Status</div><div>Priority</div>'
+    '</div>',
+    unsafe_allow_html=True,
+)
+
+for t in tickets:
+    key = t.get("key", "")
+    reporter = t.get("reporter") or t.get("reporterEmail") or "Unknown"
+    summary = t.get("summary", "(no subject)")
+    status = t.get("status", "Open")
+    priority = t.get("priority", "")
+
+    row = st.columns([2.4, 3, 1.1, 1, 0.8])
+    with row[0]:
+        st.markdown(
+            f'<div class="req-cell">{avatar_html(reporter)}'
+            f'<div><div class="req-name">{reporter}</div>'
+            f'<div class="req-key">{key}</div></div></div>',
+            unsafe_allow_html=True,
+        )
+    with row[1]:
+        st.markdown(f'<div class="subject">{summary}</div>', unsafe_allow_html=True)
+    with row[2]:
+        st.markdown(status_badge(status), unsafe_allow_html=True)
+    with row[3]:
+        st.markdown(prio_marker(priority), unsafe_allow_html=True)
+    with row[4]:
+        if st.button("Open", key=f"open_{key}", use_container_width=True):
+            st.session_state.selected = key
+            st.session_state.detail = None
+            st.rerun()
